@@ -321,7 +321,6 @@ export default function CelebrationBoard({
         <h1>{title}</h1>
         <p>
           誠摯邀請師長、同學、親友一起上傳畢業典禮照片，也歡迎在公開留言區留下祝福。
-          所有照片會集中存放於指定的 Google Drive 資料夾，留言則會同步保存到 Google Sheet。
         </p>
         <div className={styles.heroLinks}>
           <a href="#upload">上傳照片</a>
