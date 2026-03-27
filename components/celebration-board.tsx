@@ -353,7 +353,7 @@ export default function CelebrationBoard({
             <h2>照片上傳區</h2>
           </div>
           <p className={styles.sectionText}>
-            這裡改為 Google OAuth 上傳。上傳時會跳出 Google 授權視窗，使用上傳者自己的 Google 帳號把照片存進指定資料夾。
+            上傳時會跳出 Google 授權視窗，使用上傳者自己的 Google 帳號把照片存進指定資料夾。
           </p>
 
           <form className={styles.form} onSubmit={handleUpload}>
@@ -397,7 +397,7 @@ export default function CelebrationBoard({
             <h2>公開留言區</h2>
           </div>
           <p className={styles.sectionText}>
-            留言會公開顯示在這個頁面上，時間戳會自動寫入 Google Sheet，但不顯示在網頁上。
+            留言會公開顯示在這個頁面上。
           </p>
 
           <form className={styles.form} onSubmit={handleCommentSubmit}>
