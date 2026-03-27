@@ -10,11 +10,12 @@ type CommentRecord = {
 
 type Props = {
   initialComments: CommentRecord[];
+  setupPending: boolean;
 };
 
 const title = "輔大跨專業長期照護碩士學位學程13屆畢業典禮照片募集";
 
-export default function CelebrationBoard({ initialComments }: Props) {
+export default function CelebrationBoard({ initialComments, setupPending }: Props) {
   const [comments, setComments] = useState(initialComments);
   const [commentName, setCommentName] = useState("");
   const [message, setMessage] = useState("");
@@ -114,6 +115,15 @@ export default function CelebrationBoard({ initialComments }: Props) {
         </div>
       </section>
 
+      {setupPending ? (
+        <section className={styles.notice}>
+          <strong>雲端串接設定尚未完成</strong>
+          <p>
+            網站已可部署上線，但目前還需要在伺服器環境變數中填入 Google Service Account 資訊，之後照片上傳與留言寫入功能就會正式開放。
+          </p>
+        </section>
+      ) : null}
+
       <section className={styles.grid}>
         <article id="upload" className={styles.card}>
           <div className={styles.sectionHeading}>
@@ -151,7 +161,7 @@ export default function CelebrationBoard({ initialComments }: Props) {
               <span>建議使用 JPG、PNG、HEIC 轉檔後再上傳</span>
             </div>
 
-            <button type="submit" className={styles.button} disabled={uploading || !selectedFiles.length}>
+            <button type="submit" className={styles.button} disabled={setupPending || uploading || !selectedFiles.length}>
               {uploading ? "上傳中..." : "送出照片"}
             </button>
 
@@ -176,7 +186,7 @@ export default function CelebrationBoard({ initialComments }: Props) {
                 onChange={(event) => setCommentName(event.target.value)}
                 placeholder="可留空，或勾選匿名"
                 className={styles.input}
-                disabled={anonymous}
+                disabled={anonymous || setupPending}
               />
             </label>
 
@@ -185,6 +195,7 @@ export default function CelebrationBoard({ initialComments }: Props) {
                 type="checkbox"
                 checked={anonymous}
                 onChange={(event) => setAnonymous(event.target.checked)}
+                disabled={setupPending}
               />
               <span>以匿名方式發佈</span>
             </label>
@@ -197,10 +208,11 @@ export default function CelebrationBoard({ initialComments }: Props) {
                 placeholder="寫下你想對 13 屆畢業生說的話"
                 className={styles.textarea}
                 rows={5}
+                disabled={setupPending}
               />
             </label>
 
-            <button type="submit" className={styles.button} disabled={submitting || !message.trim()}>
+            <button type="submit" className={styles.button} disabled={setupPending || submitting || !message.trim()}>
               {submitting ? "送出中..." : "送出留言"}
             </button>
 

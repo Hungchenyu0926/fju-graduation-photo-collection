@@ -1,9 +1,16 @@
 import { NextResponse } from "next/server";
+import { hasGoogleIntegrationConfig } from "@/lib/google-client";
 import { uploadImageFiles } from "@/lib/google";
 
 export const runtime = "nodejs";
 
+const setupMessage = "網站管理者尚未完成 Google 雲端設定，請稍後再試。";
+
 export async function POST(request: Request) {
+  if (!hasGoogleIntegrationConfig()) {
+    return NextResponse.json({ message: setupMessage }, { status: 503 });
+  }
+
   try {
     const formData = await request.formData();
     const uploaderName = String(formData.get("uploaderName") ?? "");

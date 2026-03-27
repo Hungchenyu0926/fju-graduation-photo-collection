@@ -1,7 +1,14 @@
 import { NextResponse } from "next/server";
+import { hasGoogleIntegrationConfig } from "@/lib/google-client";
 import { appendComment, listComments } from "@/lib/google";
 
+const setupMessage = "網站管理者尚未完成 Google 雲端設定，請稍後再試。";
+
 export async function GET() {
+  if (!hasGoogleIntegrationConfig()) {
+    return NextResponse.json({ comments: [], message: setupMessage }, { status: 200 });
+  }
+
   try {
     const comments = await listComments();
     return NextResponse.json({ comments });
@@ -12,6 +19,10 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
+  if (!hasGoogleIntegrationConfig()) {
+    return NextResponse.json({ message: setupMessage }, { status: 503 });
+  }
+
   try {
     const body = (await request.json()) as {
       name?: string;

@@ -7,12 +7,24 @@ type EnvKey =
   | "GOOGLE_SERVICE_ACCOUNT_EMAIL"
   | "GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY";
 
+const requiredEnvKeys: EnvKey[] = [
+  "GOOGLE_DRIVE_FOLDER_ID",
+  "GOOGLE_SHEETS_SPREADSHEET_ID",
+  "GOOGLE_SHEETS_SHEET_NAME",
+  "GOOGLE_SERVICE_ACCOUNT_EMAIL",
+  "GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY",
+];
+
 function readEnv(key: EnvKey) {
   const value = process.env[key];
   if (!value) {
     throw new Error(`Missing required environment variable: ${key}`);
   }
   return value;
+}
+
+export function hasGoogleIntegrationConfig() {
+  return requiredEnvKeys.every((key) => Boolean(process.env[key]));
 }
 
 export const appConfig = {
