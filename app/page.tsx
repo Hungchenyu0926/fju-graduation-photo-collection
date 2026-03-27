@@ -1,12 +1,22 @@
 import CelebrationBoard from "@/components/celebration-board";
-import { hasGoogleIntegrationConfig } from "@/lib/google-client";
+import { appConfig, hasCommentsIntegrationConfig, hasGoogleDriveOauthConfig } from "@/lib/google-client";
 import { listComments } from "@/lib/google";
 
 export const dynamic = "force-dynamic";
 
 export default async function HomePage() {
-  const setupPending = !hasGoogleIntegrationConfig();
-  const comments = setupPending ? [] : await listComments();
+  const commentsReady = hasCommentsIntegrationConfig();
+  const driveOauthReady = hasGoogleDriveOauthConfig();
+  const comments = commentsReady ? await listComments() : [];
 
-  return <CelebrationBoard initialComments={comments} setupPending={setupPending} />;
+  return (
+    <CelebrationBoard
+      initialComments={comments}
+      commentsReady={commentsReady}
+      driveOauthReady={driveOauthReady}
+      driveFolderId={driveOauthReady ? appConfig.driveFolderId : ""}
+      maxUploadFiles={appConfig.maxUploadFiles}
+      maxUploadFileSizeMb={appConfig.maxUploadFileSizeMb}
+    />
+  );
 }

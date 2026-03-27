@@ -2,7 +2,7 @@
 
 這是一個部署在 Vercel 的 Next.js 網站，提供兩個功能：
 
-- 上傳畢業典禮照片到指定 Google Drive 資料夾
+- 使用 Google OAuth 把畢業典禮照片上傳到指定 Google Drive 資料夾
 - 在公開留言區新增與顯示留言，留言同步寫入指定 Google Sheet
 
 ## 已綁定的目標
@@ -11,7 +11,20 @@
 - Google Sheets Spreadsheet ID: `1eBrbHp4QIjpgS-IBEc3BdtHPTHSHOm-7LJ93gj_F_Xg`
 - Google Sheets Sheet Name: `工作表1`
 
-## 使用的欄位
+## Google OAuth 上傳
+
+照片上傳已改為使用者授權的 Google OAuth 模式，而不是 Service Account。
+
+你需要在 Google Cloud Console 建立 Web application OAuth Client，並把以下網址加入 Authorized JavaScript origins：
+
+- `https://fju-graduation-photo-collection.vercel.app`
+- 本機開發網址，例如 `http://localhost:3000`
+
+然後把 Client ID 填入：
+
+- `NEXT_PUBLIC_GOOGLE_CLIENT_ID`
+
+## 留言欄位
 
 Google Sheet 會寫入以下三欄：
 
@@ -44,38 +57,14 @@ npm install
 copy .env.example .env.local
 ```
 
-3. 填入 Google Service Account 資訊
+3. 填入 Google OAuth 與 Google Sheets 設定
 
+- `NEXT_PUBLIC_GOOGLE_CLIENT_ID`
 - `GOOGLE_SERVICE_ACCOUNT_EMAIL`
 - `GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY`
 
-4. 把你的 Service Account 加入以下權限
-
-- Google Drive 資料夾：設為 `Editor`
-- Google Sheet：設為 `Editor`
-
-5. 啟動開發伺服器
+4. 啟動開發伺服器
 
 ```bash
 npm run dev
-```
-
-## Vercel 部署
-
-在 Vercel 專案環境變數中加入 `.env.example` 的所有欄位，然後重新部署。
-
-## GitHub 版本控制
-
-```bash
-git init
-git add .
-git commit -m "Create graduation photo collection site"
-```
-
-如果你已經有 GitHub repository，再把遠端加上去後 push：
-
-```bash
-git remote add origin <your-github-repo-url>
-git branch -M main
-git push -u origin main
 ```

@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, useMemo, useRef, useState } from "react";
 import styles from "./celebration-board.module.css";
 
 type CommentRecord = {
@@ -10,18 +10,55 @@ type CommentRecord = {
 
 type Props = {
   initialComments: CommentRecord[];
-  setupPending: boolean;
+  commentsReady: boolean;
+  driveOauthReady: boolean;
+  driveFolderId: string;
+  maxUploadFiles: number;
+  maxUploadFileSizeMb: number;
 };
 
 type ApiPayload = {
   message?: string;
   comment?: CommentRecord;
-  uploadedFiles?: Array<{ id: string; name: string; webViewLink?: string | null }>;
 };
+
+type UploadResult = {
+  id: string;
+  name: string;
+  webViewLink?: string | null;
+};
+
+type GoogleTokenResponse = {
+  access_token: string;
+  error?: string;
+  error_description?: string;
+};
+
+type GoogleTokenClient = {
+  callback?: (response: GoogleTokenResponse) => void;
+  requestAccessToken: (options?: { prompt?: string }) => void;
+};
+
+declare global {
+  interface Window {
+    google?: {
+      accounts: {
+        oauth2: {
+          initTokenClient: (config: {
+            client_id: string;
+            scope: string;
+            callback: (response: GoogleTokenResponse) => void;
+          }) => GoogleTokenClient;
+        };
+      };
+    };
+  }
+}
 
 const title = "輔大跨專業長期照護碩士學位學程13屆畢業典禮照片募集";
 const uploadRequestLimitBytes = 4 * 1024 * 1024;
 const maxImageDimension = 2400;
+const googleDriveScope = "https://www.googleapis.com/auth/drive.file";
 
 function replaceExtension(fileName: string, nextExtension: string) {
   return fileName.replace(/\.[^.]+$/, "") + nextExtension;
@@ -37,10 +74,6 @@ async function parseApiPayload(response: Response): Promise<ApiPayload> {
   try {
     return JSON.parse(text) as ApiPayload;
   } catch {
-    if (text.includes("Request Entity Too Large")) {
-      return { message: "照片檔案過大，請改用較小的照片，或讓系統先壓縮後再上傳。" };
-    }
-
     return { message: text };
   }
 }
@@ -104,7 +137,49 @@ async function compressImageIfNeeded(file: File) {
   throw new Error(`照片 ${file.name} 壓縮後仍超過 4MB，請先手動縮小後再上傳。`);
 }
 
-export default function CelebrationBoard({ initialComments, setupPending }: Props) {
+async function uploadFileToDrive(file: File, folderId: string, accessToken: string) {
+  const metadata = {
+    name: file.name,
+    parents: [folderId],
+  };
+
+  const boundary = `boundary-${crypto.randomUUID()}`;
+  const metadataPart = `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(metadata)}\r\n`;
+  const fileHeaderPart = `--${boundary}\r\nContent-Type: ${file.type || "application/octet-stream"}\r\n\r\n`;
+  const closingPart = `\r\n--${boundary}--`;
+
+  const requestBody = new Blob([
+    metadataPart,
+    fileHeaderPart,
+    file,
+    closingPart,
+  ]);
+
+  const response = await fetch("https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name,webViewLink", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": `multipart/related; boundary=${boundary}`,
+    },
+    body: requestBody,
+  });
+
+  const text = await response.text();
+  if (!response.ok) {
+    throw new Error(text || `照片 ${file.name} 上傳失敗`);
+  }
+
+  return JSON.parse(text) as UploadResult;
+}
+
+export default function CelebrationBoard({
+  initialComments,
+  commentsReady,
+  driveOauthReady,
+  driveFolderId,
+  maxUploadFiles,
+  maxUploadFileSizeMb,
+}: Props) {
   const [comments, setComments] = useState(initialComments);
   const [commentName, setCommentName] = useState("");
   const [message, setMessage] = useState("");
@@ -115,6 +190,8 @@ export default function CelebrationBoard({ initialComments, setupPending }: Prop
   const [commentStatus, setCommentStatus] = useState<string>("");
   const [uploading, setUploading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const tokenClientRef = useRef<GoogleTokenClient | null>(null);
+  const accessTokenRef = useRef<string>("");
 
   const fileSummary = useMemo(() => {
     if (!selectedFiles.length) {
@@ -124,38 +201,78 @@ export default function CelebrationBoard({ initialComments, setupPending }: Prop
     return `${selectedFiles.length} 張照片待上傳`;
   }, [selectedFiles]);
 
+  async function requestGoogleAccessToken() {
+    if (!process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID) {
+      throw new Error("網站尚未設定 Google OAuth Client ID");
+    }
+
+    if (!window.google?.accounts.oauth2) {
+      throw new Error("Google OAuth 元件尚未載入，請稍候再試");
+    }
+
+    if (!tokenClientRef.current) {
+      tokenClientRef.current = window.google.accounts.oauth2.initTokenClient({
+        client_id: process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID,
+        scope: googleDriveScope,
+        callback: () => undefined,
+      });
+    }
+
+    return await new Promise<string>((resolve, reject) => {
+      if (!tokenClientRef.current) {
+        reject(new Error("Google OAuth 初始化失敗"));
+        return;
+      }
+
+      tokenClientRef.current.callback = (response: GoogleTokenResponse) => {
+        if (response.error || !response.access_token) {
+          reject(new Error(response.error_description || response.error || "Google 授權失敗"));
+          return;
+        }
+
+        accessTokenRef.current = response.access_token;
+        resolve(response.access_token);
+      };
+
+      tokenClientRef.current.requestAccessToken({
+        prompt: accessTokenRef.current ? "" : "consent",
+      });
+    });
+  }
+
   async function handleUpload(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setUploading(true);
     setUploadStatus("");
 
     try {
+      if (selectedFiles.length > maxUploadFiles) {
+        throw new Error(`一次最多可上傳 ${maxUploadFiles} 張照片`);
+      }
+
+      const accessToken = await requestGoogleAccessToken();
       let uploadedCount = 0;
 
       for (const originalFile of selectedFiles) {
-        const preparedFile = await compressImageIfNeeded(originalFile);
-        const formData = new FormData();
-        formData.set("uploaderName", uploaderName);
-        formData.append("files", preparedFile);
-
-        const response = await fetch("/api/upload", {
-          method: "POST",
-          body: formData,
-        });
-
-        const data = await parseApiPayload(response);
-        if (!response.ok) {
-          throw new Error(data.message || `照片 ${originalFile.name} 上傳失敗`);
+        if (!originalFile.type.startsWith("image/")) {
+          throw new Error(`檔案 ${originalFile.name} 不是圖片格式`);
         }
 
-        uploadedCount += data.uploadedFiles?.length ?? 0;
+        if (originalFile.size > maxUploadFileSizeMb * 1024 * 1024) {
+          throw new Error(`照片 ${originalFile.name} 超過 ${maxUploadFileSizeMb}MB 限制，請先手動縮小後再上傳。`);
+        }
+
+        const preparedFile = await compressImageIfNeeded(originalFile);
+        await uploadFileToDrive(preparedFile, driveFolderId, accessToken);
+        uploadedCount += 1;
       }
 
-      setUploadStatus(`成功上傳 ${uploadedCount} 張照片到雲端資料夾。`);
+      setUploadStatus(`成功上傳 ${uploadedCount} 張照片到 Google Drive。`);
       setSelectedFiles([]);
       setUploaderName("");
     } catch (error) {
-      setUploadStatus(error instanceof Error ? error.message : "上傳失敗");
+      const message = error instanceof Error ? error.message : "上傳失敗";
+      setUploadStatus(message.replaceAll("\n", " "));
     } finally {
       setUploading(false);
     }
@@ -184,7 +301,8 @@ export default function CelebrationBoard({ initialComments, setupPending }: Prop
         throw new Error(data.message || "送出留言失敗");
       }
 
-      setComments((current) => [data.comment!, ...current].slice(0, 50));
+      const createdComment = data.comment;
+      setComments((current) => [createdComment, ...current].slice(0, 50));
       setCommentName("");
       setMessage("");
       setAnonymous(false);
@@ -211,11 +329,20 @@ export default function CelebrationBoard({ initialComments, setupPending }: Prop
         </div>
       </section>
 
-      {setupPending ? (
+      {!driveOauthReady ? (
         <section className={styles.notice}>
-          <strong>雲端串接設定尚未完成</strong>
+          <strong>照片上傳尚未完成 Google OAuth 設定</strong>
           <p>
-            網站已可部署上線，但目前還需要在伺服器環境變數中填入 Google Service Account 資訊，之後照片上傳與留言寫入功能就會正式開放。
+            請在 Vercel 補上 `NEXT_PUBLIC_GOOGLE_CLIENT_ID`，並確認這個網站網域已加入 Google OAuth 的 Authorized JavaScript origins。
+          </p>
+        </section>
+      ) : null}
+
+      {!commentsReady ? (
+        <section className={styles.notice}>
+          <strong>留言功能尚未完成 Google Sheets 設定</strong>
+          <p>
+            目前網站可開啟，但公開留言區尚未連到 Google Sheets。補上 Service Account 設定後即可啟用。
           </p>
         </section>
       ) : null}
@@ -227,7 +354,7 @@ export default function CelebrationBoard({ initialComments, setupPending }: Prop
             <h2>照片上傳區</h2>
           </div>
           <p className={styles.sectionText}>
-            支援一次上傳多張照片，系統會逐張送出；若照片太大，會先嘗試壓縮到適合網頁上傳的大小。
+            這裡改為 Google OAuth 上傳。上傳時會跳出 Google 授權視窗，使用上傳者自己的 Google 帳號把照片存進指定資料夾。
           </p>
 
           <form className={styles.form} onSubmit={handleUpload}>
@@ -254,10 +381,10 @@ export default function CelebrationBoard({ initialComments, setupPending }: Prop
 
             <div className={styles.helperRow}>
               <span>{fileSummary}</span>
-              <span>若單張太大，系統會先壓縮；仍超過 4MB 時請手動縮小後再上傳</span>
+              <span>單張超過 4MB 會先嘗試壓縮；上傳時需用 Google 帳號授權</span>
             </div>
 
-            <button type="submit" className={styles.button} disabled={setupPending || uploading || !selectedFiles.length}>
+            <button type="submit" className={styles.button} disabled={!driveOauthReady || uploading || !selectedFiles.length}>
               {uploading ? "上傳中..." : "送出照片"}
             </button>
 
@@ -282,7 +409,7 @@ export default function CelebrationBoard({ initialComments, setupPending }: Prop
                 onChange={(event) => setCommentName(event.target.value)}
                 placeholder="可留空，或勾選匿名"
                 className={styles.input}
-                disabled={anonymous || setupPending}
+                disabled={anonymous || !commentsReady}
               />
             </label>
 
@@ -291,7 +418,7 @@ export default function CelebrationBoard({ initialComments, setupPending }: Prop
                 type="checkbox"
                 checked={anonymous}
                 onChange={(event) => setAnonymous(event.target.checked)}
-                disabled={setupPending}
+                disabled={!commentsReady}
               />
               <span>以匿名方式發佈</span>
             </label>
@@ -304,11 +431,11 @@ export default function CelebrationBoard({ initialComments, setupPending }: Prop
                 placeholder="寫下你想對 13 屆畢業生說的話"
                 className={styles.textarea}
                 rows={5}
-                disabled={setupPending}
+                disabled={!commentsReady}
               />
             </label>
 
-            <button type="submit" className={styles.button} disabled={setupPending || submitting || !message.trim()}>
+            <button type="submit" className={styles.button} disabled={!commentsReady || submitting || !message.trim()}>
               {submitting ? "送出中..." : "送出留言"}
             </button>
 
