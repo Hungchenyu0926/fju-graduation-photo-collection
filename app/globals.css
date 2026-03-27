@@ -1,0 +1,40 @@
+:root {
+  --bg: #f7f1e3;
+  --surface: rgba(255, 252, 247, 0.82);
+  --surface-strong: #fffaf2;
+  --ink: #2f241d;
+  --muted: #6d5a4f;
+  --accent: #8d4b32;
+  --accent-strong: #b55d36;
+  --gold: #d3a24c;
+  --line: rgba(95, 63, 47, 0.16);
+  --shadow: 0 20px 60px rgba(88, 53, 38, 0.12);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  margin: 0;
+  color: var(--ink);
+  background:
+    radial-gradient(circle at top left, rgba(211, 162, 76, 0.22), transparent 30%),
+    radial-gradient(circle at right 20%, rgba(181, 93, 54, 0.18), transparent 28%),
+    linear-gradient(180deg, #fdf6ea 0%, #f7f1e3 100%);
+  font-family: "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", sans-serif;
+}
+
+a {
+  color: inherit;
+}
+
+button,
+input,
+textarea {
+  font: inherit;
+}
