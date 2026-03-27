@@ -13,7 +13,96 @@ type Props = {
   setupPending: boolean;
 };
 
+type ApiPayload = {
+  message?: string;
+  comment?: CommentRecord;
+  uploadedFiles?: Array<{ id: string; name: string; webViewLink?: string | null }>;
+};
+
 const title = "輔大跨專業長期照護碩士學位學程13屆畢業典禮照片募集";
+const uploadRequestLimitBytes = 4 * 1024 * 1024;
+const maxImageDimension = 2400;
+
+function replaceExtension(fileName: string, nextExtension: string) {
+  return fileName.replace(/\.[^.]+$/, "") + nextExtension;
+}
+
+async function parseApiPayload(response: Response): Promise<ApiPayload> {
+  const text = await response.text();
+
+  if (!text) {
+    return {};
+  }
+
+  try {
+    return JSON.parse(text) as ApiPayload;
+  } catch {
+    if (text.includes("Request Entity Too Large")) {
+      return { message: "照片檔案過大，請改用較小的照片，或讓系統先壓縮後再上傳。" };
+    }
+
+    return { message: text };
+  }
+}
+
+function loadImage(file: File) {
+  return new Promise<HTMLImageElement>((resolve, reject) => {
+    const imageUrl = URL.createObjectURL(file);
+    const image = new Image();
+
+    image.onload = () => {
+      URL.revokeObjectURL(imageUrl);
+      resolve(image);
+    };
+
+    image.onerror = () => {
+      URL.revokeObjectURL(imageUrl);
+      reject(new Error(`無法讀取圖片 ${file.name}`));
+    };
+
+    image.src = imageUrl;
+  });
+}
+
+async function compressImageIfNeeded(file: File) {
+  if (file.size <= uploadRequestLimitBytes) {
+    return file;
+  }
+
+  if (!file.type.startsWith("image/")) {
+    return file;
+  }
+
+  const image = await loadImage(file);
+  const canvas = document.createElement("canvas");
+  const context = canvas.getContext("2d");
+
+  if (!context) {
+    throw new Error("瀏覽器無法建立圖片壓縮畫布");
+  }
+
+  const scale = Math.min(1, maxImageDimension / Math.max(image.width, image.height));
+  canvas.width = Math.max(1, Math.round(image.width * scale));
+  canvas.height = Math.max(1, Math.round(image.height * scale));
+  context.drawImage(image, 0, 0, canvas.width, canvas.height);
+
+  const qualities = [0.82, 0.72, 0.62, 0.52, 0.42, 0.32];
+
+  for (const quality of qualities) {
+    const blob = await new Promise<Blob | null>((resolve) => {
+      canvas.toBlob((value) => resolve(value), "image/jpeg", quality);
+    });
+
+    if (blob && blob.size <= uploadRequestLimitBytes) {
+      return new File([blob], replaceExtension(file.name, ".jpg"), {
+        type: "image/jpeg",
+        lastModified: Date.now(),
+      });
+    }
+  }
+
+  throw new Error(`照片 ${file.name} 壓縮後仍超過 4MB，請先手動縮小後再上傳。`);
+}
 
 export default function CelebrationBoard({ initialComments, setupPending }: Props) {
   const [comments, setComments] = useState(initialComments);
@@ -41,21 +130,28 @@ export default function CelebrationBoard({ initialComments, setupPending }: Prop
     setUploadStatus("");
 
     try {
-      const formData = new FormData();
-      formData.set("uploaderName", uploaderName);
-      selectedFiles.forEach((file) => formData.append("files", file));
+      let uploadedCount = 0;
 
-      const response = await fetch("/api/upload", {
-        method: "POST",
-        body: formData,
-      });
+      for (const originalFile of selectedFiles) {
+        const preparedFile = await compressImageIfNeeded(originalFile);
+        const formData = new FormData();
+        formData.set("uploaderName", uploaderName);
+        formData.append("files", preparedFile);
 
-      const data = await response.json();
-      if (!response.ok) {
-        throw new Error(data.message || "上傳失敗");
+        const response = await fetch("/api/upload", {
+          method: "POST",
+          body: formData,
+        });
+
+        const data = await parseApiPayload(response);
+        if (!response.ok) {
+          throw new Error(data.message || `照片 ${originalFile.name} 上傳失敗`);
+        }
+
+        uploadedCount += data.uploadedFiles?.length ?? 0;
       }
 
-      setUploadStatus(`成功上傳 ${data.uploadedFiles.length} 張照片到雲端資料夾。`);
+      setUploadStatus(`成功上傳 ${uploadedCount} 張照片到雲端資料夾。`);
       setSelectedFiles([]);
       setUploaderName("");
     } catch (error) {
@@ -83,12 +179,12 @@ export default function CelebrationBoard({ initialComments, setupPending }: Prop
         }),
       });
 
-      const data = await response.json();
-      if (!response.ok) {
+      const data = await parseApiPayload(response);
+      if (!response.ok || !data.comment) {
         throw new Error(data.message || "送出留言失敗");
       }
 
-      setComments((current) => [data.comment, ...current].slice(0, 50));
+      setComments((current) => [data.comment!, ...current].slice(0, 50));
       setCommentName("");
       setMessage("");
       setAnonymous(false);
@@ -131,7 +227,7 @@ export default function CelebrationBoard({ initialComments, setupPending }: Prop
             <h2>照片上傳區</h2>
           </div>
           <p className={styles.sectionText}>
-            支援一次上傳多張照片。若你想讓檔名更容易辨識，可以填寫上傳者姓名；不填也可以。
+            支援一次上傳多張照片，系統會逐張送出；若照片太大，會先嘗試壓縮到適合網頁上傳的大小。
           </p>
 
           <form className={styles.form} onSubmit={handleUpload}>
@@ -158,7 +254,7 @@ export default function CelebrationBoard({ initialComments, setupPending }: Prop
 
             <div className={styles.helperRow}>
               <span>{fileSummary}</span>
-              <span>建議使用 JPG、PNG、HEIC 轉檔後再上傳</span>
+              <span>若單張太大，系統會先壓縮；仍超過 4MB 時請手動縮小後再上傳</span>
             </div>
 
             <button type="submit" className={styles.button} disabled={setupPending || uploading || !selectedFiles.length}>
