@@ -60,6 +60,23 @@ const uploadRequestLimitBytes = 4 * 1024 * 1024;
 const maxImageDimension = 2400;
 const googleDriveScope = "https://www.googleapis.com/auth/drive.file";
 
+function getEmbeddedBrowserWarning() {
+  if (typeof navigator === "undefined") {
+    return "";
+  }
+
+  const userAgent = navigator.userAgent;
+  const matchesEmbeddedBrowser =
+    /FBAN|FBAV|Instagram|Line|MicroMessenger|Messenger|WebView|wv\)/i.test(userAgent) ||
+    (/Android/i.test(userAgent) && /Version\/[\d.]+/i.test(userAgent) && !/Chrome/i.test(userAgent));
+
+  if (!matchesEmbeddedBrowser) {
+    return "";
+  }
+
+  return "你目前像是在 LINE、Facebook、Instagram 等 App 內建瀏覽器中開啟本頁。Google 會封鎖這類瀏覽器的登入授權，請改用 Safari 或 Chrome 開啟此頁後再上傳照片。";
+}
+
 function replaceExtension(fileName: string, nextExtension: string) {
   return fileName.replace(/\.[^.]+$/, "") + nextExtension;
 }
@@ -192,6 +209,7 @@ export default function CelebrationBoard({
   const [submitting, setSubmitting] = useState(false);
   const tokenClientRef = useRef<GoogleTokenClient | null>(null);
   const accessTokenRef = useRef<string>("");
+  const embeddedBrowserWarning = useMemo(() => getEmbeddedBrowserWarning(), []);
 
   const fileSummary = useMemo(() => {
     if (!selectedFiles.length) {
@@ -246,6 +264,10 @@ export default function CelebrationBoard({
     setUploadStatus("");
 
     try {
+      if (embeddedBrowserWarning) {
+        throw new Error(embeddedBrowserWarning);
+      }
+
       if (selectedFiles.length > maxUploadFiles) {
         throw new Error(`一次最多可上傳 ${maxUploadFiles} 張照片`);
       }
@@ -356,6 +378,8 @@ export default function CelebrationBoard({
             上傳時會跳出 Google 授權視窗，使用上傳者自己的 Google 帳號把照片存進指定資料夾。
           </p>
 
+          {embeddedBrowserWarning ? <p className={styles.status}>{embeddedBrowserWarning}</p> : null}
+
           <form className={styles.form} onSubmit={handleUpload}>
             <label className={styles.label}>
               上傳者姓名（選填）
@@ -383,7 +407,11 @@ export default function CelebrationBoard({
               <span>單張超過 4MB 會先嘗試壓縮；上傳時需用 Google 帳號授權</span>
             </div>
 
-            <button type="submit" className={styles.button} disabled={!driveOauthReady || uploading || !selectedFiles.length}>
+            <button
+              type="submit"
+              className={styles.button}
+              disabled={!driveOauthReady || uploading || !selectedFiles.length || Boolean(embeddedBrowserWarning)}
+            >
               {uploading ? "上傳中..." : "送出照片"}
             </button>
 
