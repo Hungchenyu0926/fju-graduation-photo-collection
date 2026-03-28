@@ -165,12 +165,7 @@ async function uploadFileToDrive(file: File, folderId: string, accessToken: stri
   const fileHeaderPart = `--${boundary}\r\nContent-Type: ${file.type || "application/octet-stream"}\r\n\r\n`;
   const closingPart = `\r\n--${boundary}--`;
 
-  const requestBody = new Blob([
-    metadataPart,
-    fileHeaderPart,
-    file,
-    closingPart,
-  ]);
+  const requestBody = new Blob([metadataPart, fileHeaderPart, file, closingPart]);
 
   const response = await fetch("https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name,webViewLink", {
     method: "POST",
@@ -293,8 +288,8 @@ export default function CelebrationBoard({
       setSelectedFiles([]);
       setUploaderName("");
     } catch (error) {
-      const message = error instanceof Error ? error.message : "上傳失敗";
-      setUploadStatus(message.replaceAll("\n", " "));
+      const errorMessage = error instanceof Error ? error.message : "上傳失敗";
+      setUploadStatus(errorMessage.replaceAll("\n", " "));
     } finally {
       setUploading(false);
     }
@@ -341,9 +336,7 @@ export default function CelebrationBoard({
       <section className={styles.hero}>
         <div className={styles.heroBadge}>Graduate Memories Collection</div>
         <h1>{title}</h1>
-        <p>
-          誠摯邀請師長、同學、親友一起上傳畢業典禮照片，也歡迎在公開留言區留下祝福。
-        </p>
+        <p>誠摯邀請師長、同學、親友一起提供適合畢業典禮影片製作的照片，也歡迎在公開留言區留下祝福。</p>
         <div className={styles.heroLinks}>
           <a href="#upload">上傳照片</a>
           <a href="#messages">留下祝福</a>
@@ -353,18 +346,14 @@ export default function CelebrationBoard({
       {!driveOauthReady ? (
         <section className={styles.notice}>
           <strong>照片上傳尚未完成 Google OAuth 設定</strong>
-          <p>
-            請在 Vercel 補上 `NEXT_PUBLIC_GOOGLE_CLIENT_ID`，並確認這個網站網域已加入 Google OAuth 的 Authorized JavaScript origins。
-          </p>
+          <p>請在 Vercel 補上 `NEXT_PUBLIC_GOOGLE_CLIENT_ID`，並確認這個網站網域已加入 Google OAuth 的 Authorized JavaScript origins。</p>
         </section>
       ) : null}
 
       {!commentsReady ? (
         <section className={styles.notice}>
           <strong>留言功能尚未完成 Google Sheets 設定</strong>
-          <p>
-            目前網站可開啟，但公開留言區尚未連到 Google Sheets。補上 Service Account 設定後即可啟用。
-          </p>
+          <p>目前網站可開啟，但公開留言區尚未連到 Google Sheets。補上 Service Account 設定後即可啟用。</p>
         </section>
       ) : null}
 
@@ -374,9 +363,7 @@ export default function CelebrationBoard({
             <span>01</span>
             <h2>照片上傳區</h2>
           </div>
-          <p className={styles.sectionText}>
-            上傳時會跳出 Google 授權視窗，使用上傳者自己的 Google 帳號把照片存進指定資料夾。
-          </p>
+          <p className={styles.sectionText}>歡迎上傳可用於畢業典禮影片製作的照片。上傳時會跳出 Google 授權視窗，使用上傳者自己的 Google 帳號把照片存進指定資料夾。</p>
 
           {embeddedBrowserWarning ? <p className={styles.status}>{embeddedBrowserWarning}</p> : null}
 
@@ -424,9 +411,7 @@ export default function CelebrationBoard({
             <span>02</span>
             <h2>公開留言區</h2>
           </div>
-          <p className={styles.sectionText}>
-            留言會公開顯示在這個頁面上。
-          </p>
+          <p className={styles.sectionText}>歡迎留下想對 13 屆畢業生說的話，祝福會公開顯示在這個頁面上。</p>
 
           <form className={styles.form} onSubmit={handleCommentSubmit}>
             <label className={styles.label}>
