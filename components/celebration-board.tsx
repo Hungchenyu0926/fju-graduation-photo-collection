@@ -55,7 +55,7 @@ declare global {
   }
 }
 
-const title = "輔大跨專業長期照護碩士學位學程13屆畢業典禮照片募集";
+const title = "輔大跨專業長期照護碩士學位學程13屆畢業典禮影片製作照片募集";
 const uploadRequestLimitBytes = 4 * 1024 * 1024;
 const maxImageDimension = 2400;
 const googleDriveScope = "https://www.googleapis.com/auth/drive.file";
